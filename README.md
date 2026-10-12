@@ -1,91 +1,127 @@
 # autoresearch
 
 ![teaser](progress.png)
+# Autonomous LLM Research
 
-*One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
+A minimal framework for running autonomous experiments on a real language model using a single GPU.
 
-The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `program.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `program.md` in this repo is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069) and [this tweet](https://x.com/karpathy/status/2031135152349524125).
+An AI coding agent can modify the training code, run a short experiment, evaluate the result, and decide whether to keep or discard the change. Repeating this process over several hours produces a record of experiments and may improve model performance without manual edits to the training script.
 
-## How it works
+The human researcher controls the process through `program.md`, which defines the agent's instructions, objectives, and experimental workflow.
 
-The repo is deliberately kept small and only really has three files that matter:
+## How It Works
 
-- **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
-- **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
-- **`program.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
+The project centers on three files:
 
-By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared.
+- **`prepare.py`** — Contains fixed constants, one-time data preparation, tokenizer training, data loading, and evaluation utilities. The agent must not modify this file.
+- **`train.py`** — Contains the GPT model, optimizers (Muon and AdamW), and training loop. The agent can edit the architecture, hyperparameters, optimization settings, batch size, and other training details.
+- **`program.md`** — Contains the instructions that guide the agent's research process. The human researcher edits this file.
 
-If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) looks pretty good for a lot more context.
+Each training experiment uses a **fixed five-minute training budget**, excluding startup and compilation. Performance is measured by **validation bits per byte (`val_bpb`)**. Lower values indicate better results. This metric is independent of vocabulary size, making it useful for comparing different model configurations.
 
-## Quick start
+A typical cycle is:
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+1. Review the current training code and prior results.
+2. Propose and implement one experimental change in `train.py`.
+3. Train for the fixed five-minute budget.
+4. Evaluate the resulting `val_bpb`.
+5. Keep the change if it improves the result; otherwise revert it.
+6. Log the outcome and begin another experiment.
+
+## Requirements
+
+- One NVIDIA GPU (tested on H100 hardware)
+- Python 3.10 or newer
+- `uv` for dependency management
+
+## Quick Start
+
+Install `uv` using a trusted installation method before proceeding.
+
+### 1. Install dependencies
 
 ```bash
-
-# 1. Install uv project manager (if you don't already have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2. Install dependencies
 uv sync
+```
 
-# 3. Download data and train tokenizer (one-time, ~2 min)
+### 2. Prepare the data and tokenizer
+
+```bash
 uv run prepare.py
+```
 
-# 4. Manually run a single training experiment (~5 min)
+This one-time step downloads the training data and trains the tokenizer. It typically takes around two minutes, depending on the environment.
+
+### 3. Run a training experiment
+
+```bash
 uv run train.py
 ```
 
-If the above commands all work ok, your setup is working and you can go into autonomous research mode.
+A training experiment takes approximately five minutes, excluding startup and compilation.
 
-## Running the agent
+### 4. Start autonomous research
 
-Simply spin up your Claude/Codex or whatever you want in this repo (and disable all permissions), then you can prompt something like:
+Open the project in a compatible AI coding-agent environment. Give the agent access to `program.md` and allow it to carry out experiments within the boundaries defined there.
 
-```
-Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
-```
+For example, instruct the agent to read `program.md`, verify the environment, and begin its first experiment.
 
-The `program.md` file is essentially a super lightweight "skill".
+Review the agent's file permissions and execution settings before allowing unattended runs.
 
-## Project structure
+## Project Structure
 
-```
-prepare.py      — constants, data prep + runtime utilities (do not modify)
-train.py        — model, optimizer, training loop (agent modifies this)
-program.md      — agent instructions
-pyproject.toml  — dependencies
+```text
+prepare.py       Fixed constants, data preparation, and evaluation utilities
+train.py         Model, optimizer, and training loop; modified by the agent
+program.md       Research instructions; maintained by the human researcher
+pyproject.toml   Project dependencies and configuration
 ```
 
-## Design choices
+## Design Choices
 
-- **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
-- **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that autoresearch will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
-- **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
+### Single editable training file
 
-## Platform support
+The agent modifies only `train.py`. This keeps experiments focused, changes easy to inspect, and reversions straightforward.
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+### Fixed training budget
 
-Seeing as there seems to be a lot of interest in tinkering with autoresearch on much smaller compute platforms than an H100, a few extra words. If you're going to try running autoresearch on smaller computers (Macbooks etc.), I'd recommend one of the forks below. On top of this, here are some recommendations for how to tune the defaults for much smaller models for aspiring forks:
+Every experiment uses the same five-minute training period. This allows experiments on the same hardware to be compared under a consistent time limit.
 
-1. To get half-decent results I'd use a dataset with a lot less entropy, e.g. this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean). These are GPT-4 generated short stories. Because the data is a lot narrower in scope, you will see reasonable results with a lot smaller models (if you try to sample from them after training).
-2. You might experiment with decreasing `vocab_size`, e.g. from 8192 down to 4096, 2048, 1024, or even - simply byte-level tokenizer with 256 possibly bytes after utf-8 encoding.
-3. In `prepare.py`, you'll want to lower `MAX_SEQ_LEN` a lot, depending on the computer even down to 256 etc. As you lower `MAX_SEQ_LEN`, you may want to experiment with increasing `DEVICE_BATCH_SIZE` in `train.py` slightly to compensate. The number of tokens per fwd/bwd pass is the product of these two.
-4. Also in `prepare.py`, you'll want to decrease `EVAL_TOKENS` so that your validation loss is evaluated on a lot less data.
-5. In `train.py`, the primary single knob that controls model complexity is the `DEPTH` (default 8, here). A lot of variables are just functions of this, so e.g. lower it down to e.g. 4.
-6. You'll want to most likely use `WINDOW_PATTERN` of just "L", because "SSSL" uses alternating banded attention pattern that may be very inefficient for you. Try it.
-7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
+In ideal conditions, this provides roughly 12 experiments per hour, although evaluation, agent reasoning, code edits, and other overhead reduce the actual total.
 
-I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+Results are optimized for the available hardware and may not be directly comparable with results from different devices.
 
-## Notable forks
+### Minimal dependencies
 
-- [miolini/autoresearch-macos](https://github.com/miolini/autoresearch-macos) (MacOS)
-- [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) (MacOS)
-- [jsegov/autoresearch-win-rtx](https://github.com/jsegov/autoresearch-win-rtx) (Windows)
-- [andyluo7/autoresearch](https://github.com/andyluo7/autoresearch) (AMD)
+The implementation is designed around PyTorch and a small set of supporting packages. It uses a single GPU without distributed training or a complex configuration system.
+
+### Agent-directed iteration
+
+The agent proposes, tests, and evaluates changes while the human researcher improves the instructions in `program.md`. This separates the experimental workflow from the training code being tested.
+
+## Platform Support
+
+The baseline implementation requires a single NVIDIA GPU. CPU, Apple Silicon, and other accelerator support may require adjustments to device handling, attention implementations, training settings, and evaluation settings.
+
+## Guidance for Smaller Hardware
+
+Smaller GPUs and other constrained systems may need lighter training configurations. Consider the following adjustments:
+
+1. **Use a simpler dataset.** A narrow, lower-entropy text dataset can make smaller models easier to train and evaluate.
+2. **Reduce vocabulary size.** Experiment with values such as 4096, 2048, or 1024, or use a byte-level tokenizer with 256 possible byte values.
+3. **Shorten the sequence length.** Decrease `MAX_SEQ_LEN` in `prepare.py`, potentially to 256 on highly constrained devices. Adjust `DEVICE_BATCH_SIZE` in `train.py` as appropriate. Tokens processed per forward/backward pass equal the product of these two values.
+4. **Reduce evaluation workload.** Decrease `EVAL_TOKENS` in `prepare.py` to shorten validation on slower hardware.
+5. **Reduce model depth.** `DEPTH` in `train.py` is a primary control for model complexity. For example, try reducing it from 8 to 4.
+6. **Simplify attention patterns.** Try setting `WINDOW_PATTERN` to `"L"` instead of `"SSSL"` if banded attention is inefficient on the target device.
+7. **Reduce total batch size.** Try smaller powers of two for `TOTAL_BATCH_SIZE`, such as `2**14` (16,384).
+
+These changes are starting points, not universal defaults. Test them against the available memory, throughput, and validation performance.
+
+## Experiment Evaluation
+
+Use `val_bpb` as the primary metric when comparing training runs on the same hardware and data setup.
+
+Keep an experiment log containing the proposed change, the observed metric, and whether the change was retained. Avoid changing evaluation data or measurement rules between experiments, since that would undermine comparisons.
 
 ## License
 
